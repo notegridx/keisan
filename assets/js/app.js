@@ -6,11 +6,6 @@
     - Simple arithmetic practice with drum-machine style feedback
     - BPM is fixed (no user control)
     - Beat grows with correct answers, resets on mistakes
-
-    iPhone / iOS Safari input UX:
-    - Numeric keyboard "Done" doesn't always fire keydown Enter.
-    - Closing keyboard (blur) should also trigger a "commit" action.
-    - We therefore support: form submit + blur + Enter + CHECK button.
   */
 
   // -------------------------
@@ -61,7 +56,6 @@
     op: $id("op"),
     b: $id("b"),
     answer: $id("answer"),
-    answerForm: $id("answerForm"),
 
     check: $id("check"),
     reset: $id("reset"),
@@ -118,9 +112,6 @@
     // Derived config
     diff: difficultyForStage(0),
   };
-
-  // Prevent double-trigger (blur + submit, etc.)
-  let judging = false;
 
   // -------------------------
   // Utilities (pure)
@@ -550,33 +541,25 @@
   }
 
   function checkAnswer() {
-    if (judging) return;
-    judging = true;
+    const v = parseAnswer(el.answer.value);
 
-    try {
-      const v = parseAnswer(el.answer.value);
-
-      // Empty or invalid input: do not advance.
-      if (v === null || Number.isNaN(v)) {
-        focusAnswer({ select: true });
-        return;
-      }
-
-      if (v === state.currentAnswer) {
-        updateOnCorrect();
-        playCorrectFx();
-        window.setTimeout(newProblem, SETTINGS.nextDelayMs);
-        return;
-      }
-
-      // Wrong: reset progression and keep re-try on the same next problem.
-      resetProgression();
-      playWrongFx();
+    // Empty or invalid input: do not advance.
+    if (v === null || Number.isNaN(v)) {
       focusAnswer({ select: true });
-    } finally {
-      // Prevent double-trigger from blur + submit or Enter on iOS Safari
-      window.setTimeout(() => { judging = false; }, 50);
+      return;
     }
+
+    if (v === state.currentAnswer) {
+      updateOnCorrect();
+      playCorrectFx();
+      window.setTimeout(newProblem, SETTINGS.nextDelayMs);
+      return;
+    }
+
+    // Wrong: reset progression and keep re-try on the same next problem.
+    resetProgression();
+    playWrongFx();
+    focusAnswer({ select: true });
   }
 
   function resetAll() {
@@ -605,23 +588,8 @@
   el.check.addEventListener("click", checkAnswer);
   el.reset.addEventListener("click", resetAll);
 
-  // Desktop / some mobile: Enter works.
   el.answer.addEventListener("keydown", (e) => {
     if (e.key === "Enter") checkAnswer();
-  });
-
-  // iPhone: "Done" key triggers form submit reliably
-  if (el.answerForm) {
-    el.answerForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      checkAnswer();
-    });
-  }
-
-  // iPhone: closing keyboard or tapping outside triggers blur
-  el.answer.addEventListener("blur", () => {
-    if (el.answer.value.trim() === "") return;
-    checkAnswer();
   });
 
   if (el.drumToggle) {

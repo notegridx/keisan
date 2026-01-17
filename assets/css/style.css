@@ -317,12 +317,6 @@ body.low-spec::after {
   color: #0b1220;
 }
 
-/* Keep the answer form inline so the formula layout doesn't shift */
-.formula form {
-  display: inline;
-  margin: 0;
-}
-
 .formula input:focus {
   box-shadow: 0 0 0 3px rgba(34, 211, 238, .18), 0 0 20px rgba(34, 211, 238, .18);
   border-color: rgba(34, 211, 238, .32);
