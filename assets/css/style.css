@@ -179,6 +179,9 @@ body.low-spec::after {
   .flash-ng {
     animation: none !important;
   }
+  .formula.shake {
+    animation: none !important;
+  }
 }
 
 /* -------------------------
@@ -402,6 +405,44 @@ body.low-spec::after {
   padding: 6px 10px;
 }
 
+/* -------------------------
+   Wrong: shake (NOPE)
+   ------------------------- */
+
+@keyframes shakeX {
+  0% {
+    transform: translateX(0);
+  }
+
+  18% {
+    transform: translateX(-7px);
+  }
+
+  36% {
+    transform: translateX(7px);
+  }
+
+  52% {
+    transform: translateX(-5px);
+  }
+
+  68% {
+    transform: translateX(5px);
+  }
+
+  84% {
+    transform: translateX(-3px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.formula.shake {
+  animation: shakeX 220ms ease-out;
+}
+
 /* Controls */
 .controls {
   display: inline-flex;
@@ -498,6 +539,61 @@ label {
 .container.ui-snare .controls {
   animation: uiGlowB 120ms ease-out;
 }
+
+/* -------------------------
+   Try Again micro message (above problem)
+   ------------------------- */
+
+.formula .retry-text {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  /* ← 問題の上に配置 */
+  transform: translateX(-50%) translateY(6px);
+  pointer-events: none;
+
+  font-family: var(--font-ui);
+  font-size: clamp(18px, 3.6vw, 24px);
+  /* ← 大きく */
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  color: rgba(244, 114, 182, 0.98);
+  text-shadow:
+    0 0 10px rgba(244, 114, 182, .75),
+    0 0 22px rgba(244, 114, 182, .45);
+
+  opacity: 0;
+}
+
+/* 表示トリガー */
+.formula.show-retry .retry-text {
+  animation: retryFadeAbove 720ms ease-out forwards;
+}
+
+@keyframes retryFadeAbove {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+
+  20% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+}
+
 
 /* -------------------------
    Modal
@@ -637,4 +733,3 @@ label {
   opacity: .45;
   white-space: nowrap;
 }
-

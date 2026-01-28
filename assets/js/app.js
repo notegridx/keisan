@@ -34,6 +34,9 @@
 
     // Difficulty increases every N correct (global score)
     stageClearEveryCorrect: 20,
+
+    // Mute the next "beat" (quarter note) on wrong when SFX is enabled
+    muteOnWrongSteps: 4,
   };
 
   /** Difficulty presets by stage (0-based). Stage 3+ uses a formula. */
@@ -101,6 +104,9 @@
     // Beat
     drumLevel: 0,         // 0=kick, 1=kick+hihat, 2=kick+hihat+snare
     bgmStage: 0,
+
+    // NEW: mute next steps (on wrong)
+    muteSteps: 0,
 
     // Transport
     step: 0,
@@ -215,6 +221,19 @@
     focusAnswer();
   }
 
+  function showRetryText() {
+    let elRetry = el.formula.querySelector(".retry-text");
+
+    if (!elRetry) {
+      elRetry = document.createElement("div");
+      elRetry.className = "retry-text";
+      elRetry.textContent = "try again";
+      el.formula.appendChild(elRetry);
+    }
+
+    retriggerClass(el.formula, "show-retry");
+  }
+
   // -------------------------
   // Audio helpers (side effects)
   // -------------------------
@@ -242,7 +261,14 @@
 
   function playWrongFx() {
     retriggerClass(el.formula, "flash-ng");
+    retriggerClass(el.formula, "shake");
+    showRetryText();
     safePlaySfx(el.wrongSound);
+
+    // NEW: mute next beat only when SFX is enabled and BGM is running
+    if (state.soundEnabled && drum.isRunning()) {
+      state.muteSteps = SETTINGS.muteOnWrongSteps;
+    }
   }
 
   function playBgmSwitchSe() {
@@ -400,6 +426,18 @@
     };
 
     const scheduleStep = (time) => {
+      // NEW: mute upcoming steps but keep transport running
+      if (state.muteSteps > 0) {
+        state.muteSteps -= 1;
+
+        state.step += 1;
+        if (state.step >= SETTINGS.stepsPerBar) {
+          state.step = 0;
+          state.barCounter = (state.barCounter + 1) % SETTINGS.barsCycle;
+        }
+        return;
+      }
+
       const stage = state.bgmStage;
 
       // Kick pattern grows with bgmStage.
