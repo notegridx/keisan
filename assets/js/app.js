@@ -184,11 +184,33 @@
   // -------------------------
   // DOM helpers
   // -------------------------
-  function retriggerClass(target, className) {
-    target.classList.remove(className);
-    // Force reflow so the same animation can be retriggered.
+  // NEW: batch retrigger across multiple elements with a single layout flush
+  // entries: Array<[Element, string[]]>
+  function retriggerEffectsBatch(entries, flushEl = document.body) {
+    // 1) remove all
+    for (const [node, classNames] of entries) {
+      for (const cn of classNames) node.classList.remove(cn);
+    }
+
+    // 2) single forced layout flush (one reflow)
+    void flushEl.offsetWidth;
+
+    // 3) add all back
+    for (const [node, classNames] of entries) {
+      for (const cn of classNames) node.classList.add(cn);
+    }
+  }
+
+  // NEW: batch retrigger to force reflow only once per event
+  function retriggerClasses(target, classNames) {
+    // remove first
+    for (const cn of classNames) target.classList.remove(cn);
+
+    // Force single reflow
     void target.offsetWidth;
-    target.classList.add(className);
+
+    // add back
+    for (const cn of classNames) target.classList.add(cn);
   }
 
   function focusAnswer({ select = false } = {}) {
@@ -231,7 +253,7 @@
       el.formula.appendChild(elRetry);
     }
 
-    retriggerClass(el.formula, "show-retry");
+    // NOTE: animation retrigger is handled in playWrongFx() as a batch
   }
 
   // -------------------------
@@ -254,15 +276,14 @@
   }
 
   function playCorrectFx() {
-    retriggerClass(el.formula, "flash-ok");
-    retriggerClass(el.formula, "scan");
+    retriggerClasses(el.formula, ["flash-ok", "scan"]);
     safePlaySfx(el.correctSound);
   }
 
   function playWrongFx() {
-    retriggerClass(el.formula, "flash-ng");
-    retriggerClass(el.formula, "shake");
-    showRetryText();
+    showRetryText(); // DOM準備だけ（ここではreflowしない）
+
+    retriggerClasses(el.formula, ["flash-ng", "shake", "show-retry"]);
     safePlaySfx(el.wrongSound);
 
     // NEW: mute next beat only when SFX is enabled and BGM is running
@@ -405,28 +426,52 @@
       osc.stop(time + 0.08);
     };
 
-    // Schedules the kick/snare UI pulses close to the audio time.
-    const scheduleUiPulse = (time, kind) => {
+    // UI pulse queue (per step -> single timer)
+    let uiPulseTimer = null;
+    let uiPulseHits = { kick: false, snare: false };
+
+    function queueUiPulse(time, hits) {
+      // Merge hits for this step/time
+      uiPulseHits.kick = uiPulseHits.kick || !!hits.kick;
+      uiPulseHits.snare = uiPulseHits.snare || !!hits.snare;
+
+      // Ensure only one timer is scheduled
+      if (uiPulseTimer != null) return;
+
       const ctx = ensureCtx();
       const delayMs = Math.max(0, (time - ctx.currentTime) * 1000);
-      window.setTimeout(() => {
-        if (!running) return;
 
-        if (kind === "kick") {
-          retriggerClass(document.body, "bg-kick");
-          retriggerClass(el.container, "ui-kick");
+      uiPulseTimer = window.setTimeout(() => {
+        uiPulseTimer = null;
+        if (!running) {
+          uiPulseHits = { kick: false, snare: false };
           return;
         }
 
-        if (kind === "snare") {
-          retriggerClass(document.body, "scan-snare");
-          retriggerClass(el.container, "ui-snare");
+        const bodyClasses = [];
+        const containerClasses = [];
+
+        if (uiPulseHits.kick) {
+          bodyClasses.push("bg-kick");
+          containerClasses.push("ui-kick");
         }
+        if (uiPulseHits.snare) {
+          bodyClasses.push("scan-snare");
+          containerClasses.push("ui-snare");
+        }
+
+        uiPulseHits = { kick: false, snare: false };
+
+        const entries = [];
+        if (bodyClasses.length) entries.push([document.body, bodyClasses]);
+        if (containerClasses.length) entries.push([el.container, containerClasses]);
+
+        retriggerEffectsBatch(entries, document.body);
       }, delayMs);
-    };
+    }
 
     const scheduleStep = (time) => {
-      // NEW: mute upcoming steps but keep transport running
+      // mute handling (そのままでOK)
       if (state.muteSteps > 0) {
         state.muteSteps -= 1;
 
@@ -440,30 +485,30 @@
 
       const stage = state.bgmStage;
 
-      // Kick pattern grows with bgmStage.
       const kickHit =
         (state.step % 4 === 0) ||
         (stage >= 1 && (state.step === 10 || state.step === 14)) ||
         (stage >= 2 && state.step === 7) ||
         (stage >= 3 && (state.step === 3 || state.step === 11));
 
-      if (kickHit) {
-        playKick(time);
-        scheduleUiPulse(time, "kick");
-      }
+      if (kickHit) playKick(time);
 
       if (state.drumLevel >= 1) {
         const hatHit = stage >= 3 ? true : (state.step % 2 === 0);
         if (hatHit) playHihat(time);
       }
 
+      let snareHit = false;
       if (state.drumLevel >= 2) {
-        let snareHit = (state.step === 4 || state.step === 12);
+        snareHit = (state.step === 4 || state.step === 12);
         if (stage >= 3 && state.step === 15 && (state.barCounter % 4 === 3)) snareHit = true;
-        if (snareHit) {
-          playSnare(time);
-          scheduleUiPulse(time, "snare");
-        }
+
+        if (snareHit) playSnare(time);
+      }
+
+      // UI pulses: single timer per step (kick-onlyでも動く)
+      if (kickHit || snareHit) {
+        queueUiPulse(time, { kick: kickHit, snare: snareHit });
       }
 
       state.step += 1;
@@ -501,6 +546,10 @@
       timerId = null;
       running = false;
       if (el.drumToggle) el.drumToggle.textContent = "BGM ON";
+      if (uiPulseTimer != null) window.clearTimeout(uiPulseTimer);
+      uiPulseTimer = null;
+      uiPulseHits = { kick: false, snare: false };
+
     };
 
     const resetTransport = () => {
